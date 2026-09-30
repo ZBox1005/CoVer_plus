@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+*.log
+.DS_Store
+
+/datasets/
+/results/
+/_staging/
+/models/checkpoints/
+/DNNs/checkpoints/
+/data/ImageNet/imagenet_class_clean.npy
+/visualizer.py

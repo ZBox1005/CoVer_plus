@@ -1,0 +1,17 @@
+# Install a matching PyTorch / torchvision CUDA build separately.
+numpy
+scipy
+scikit-learn
+scikit-image
+pandas
+matplotlib
+seaborn
+tqdm
+Pillow
+opencv-python
+wand
+timm
+transformers
+ftfy
+regex
+huggingface-hub

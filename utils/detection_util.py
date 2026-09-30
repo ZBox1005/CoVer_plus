@@ -247,7 +247,8 @@ def get_ood_scores_resnet(args, net, aug_loader_dict, imagenet_c, dataset_name='
     return new_score
 
 
-def get_ood_scores_clip(args, net, aug_loader_dict, test_labels, imagenet_c, dataset_name='ImageNet'):
+def get_ood_scores_clip(args, net, aug_loader_dict, test_labels, imagenet_c,
+                        dataset_name='ImageNet', save=True):
     '''
     used for scores based on img-caption product inner products (CLIP-based Architecture).
     '''
@@ -259,6 +260,9 @@ def get_ood_scores_clip(args, net, aug_loader_dict, test_labels, imagenet_c, dat
     all_aug_scores = {}
 
     tokenizer = open_clip.get_tokenizer(args.CLIP_ckpt)
+    with torch.no_grad():
+        text_inputs = tokenizer([f"a photo of a {c}" for c in test_labels]).cuda()
+        text_features = net.encode_text(text_inputs, normalize=True)
     for item in imagenet_c.items():
         aug_name = item[0]
         severities = item[1]
@@ -270,8 +274,7 @@ def get_ood_scores_clip(args, net, aug_loader_dict, test_labels, imagenet_c, dat
             with torch.no_grad():
                 for batch_idx, (images, labels) in enumerate(tqdm_object):
                     images = images.cuda()
-                    text_inputs = tokenizer([f"a photo of a {c}" for c in test_labels]).cuda()
-                    image_features, text_features, _ = net(images, text_inputs)
+                    image_features = net.encode_image(images, normalize=True)
                     output = image_features @ text_features.T
                     # Maximum-softmax score by default
                     smax = to_np(F.softmax(output / args.T, dim=1))
@@ -288,9 +291,9 @@ def get_ood_scores_clip(args, net, aug_loader_dict, test_labels, imagenet_c, dat
         new_score = torch.mean(scores, dim=0)
 
     # Record the scores
-    f1 = open(os.path.join(args.log_directory, f"{dataset_name}_scores.txt"), 'w')
-    for score in to_np(new_score):
-        f1.write("{}\n".format(score))
+    if save:
+        np.savetxt(os.path.join(args.log_directory, f"{dataset_name}_scores.txt"),
+                   to_np(new_score))
 
     return new_score
 

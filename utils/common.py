@@ -27,9 +27,12 @@ def get_test_labels(args, loader = None):
     return test_labels
 
 def obtain_ImageNet_classes():
-    loc = os.path.join('data', 'ImageNet')
-    with open(os.path.join(loc, 'imagenet_class_clean.npy'), 'rb') as f:
-        imagenet_cls = np.load(f)
+    path = os.path.join(os.path.dirname(__file__), '..', 'data', 'ImageNet',
+                        'imagenet_class_clean.txt')
+    with open(path) as f:
+        imagenet_cls = [line.strip() for line in f]
+    if len(imagenet_cls) != 1000:
+        raise ValueError(f'Expected 1000 ImageNet class names in {path}')
     return imagenet_cls
 
 

@@ -1,136 +1,110 @@
-<h1 align='center'>
-What If the Input is Expanded in OOD Detection?
-</h1>
+# CoVer and CoVer+
 
-<p align='center'>
-<a href="https://arxiv.org/abs/2410.18472"><img src="https://img.shields.io/badge/arXiv-2410.18472-b31b1b.svg" alt="Paper"></a> <a href="https://neurips.cc/"><img src="https://img.shields.io/badge/Pub-NeurIPS'24-blue" alt="Conf"></a> <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="Liscence"></a> <a href=""><img src="https://img.shields.io/badge/Project%20-D76364" alt="Slides"></a> <a href=""><img src="https://img.shields.io/badge/Poster%20-Ffa500" alt="Poster"></a>
+Official code for **Unveiling Representation Expansion: A New Lens on Out-of-Distribution Detection** ([IJCV 2026](https://doi.org/10.1007/s11263-026-03036-2)) and the preceding [NeurIPS 2024 CoVer paper](https://arxiv.org/abs/2410.18472).
 
-</p>
+CoVer averages an OOD confidence score across an original image and its corrupted views. CoVer+ also averages across pretrained model backbones. The CLIP implementation here uses the maximum softmax probability (MCM) with temperature 1 by default. All image views and model backbones have equal weight; no model-dependent standardization is applied.
 
-This repository contains the source codes for reproducing the results of NeurIPS'24 paper: [**What If the Input is Expanded in OOD Detection?**]().
+## Setup
 
-**Author List**: *Boxuan Zhang, *Jianing Zhu, Zengmao Wang, Tongliang Liu, Bo Du, Bo Han.
+Use Python 3.10, PyTorch and a matching torchvision build with CUDA support. Install the remaining packages with:
 
-(* Equal Contribution)
+~~~bash
+pip install -r requirements.txt
+~~~
 
-## Required Packages
+The repository includes the OpenCLIP implementation used by the original CoVer code. It downloads the OpenAI CLIP weights on first use. The selected corruptions use ImageMagick through wand; install ImageMagick on your system before generating or applying corruptions.
 
-Our experiments are conducted on Ubuntu Linux 20.04 with Python 3.10 and Pytorch 2.2. Besides, the following packages are required to be installed:
+## Data
 
-- [transformers](https://huggingface.co/docs/transformers/installation)
-- scipy
-- scikit-learn
-- matplotlib
-- seaborn
-- pandas
-- tqdm
+Dataset images and generated corruptions are not distributed with this repository. Download them separately into the ignored **datasets/** directory.
 
-## Checkpoints
+### Download original images
 
-For DNN models, our reported results are based on checkpoints of ResNet-50. The official checkpoints can be downloaded from [pytorch](https://download.pytorch.org/models/resnet50-19c8e357.pth). In addition, [ASH](https://arxiv.org/abs/2209.09858) provide ResNet-50 checkpoints for its implementation, please refer to its [code repository](https://andrijazz.github.io/ash/). Please download the corresponding checkpoints in `DNNs/checkpoints/`.
+- **ImageNet-1K:** obtain the ILSVRC 2012 validation set from the [official ImageNet download page](https://image-net.org/challenges/LSVRC/2012/index.php#); registration may be required. Organize the validation images by synset under **datasets/ImageNet/val/**.
+- **ImageNet-10/20/100 (optional):** follow the subset construction instructions in [MCM](https://github.com/deeplearning-wisc/MCM). These are needed only for the corresponding subset evaluations.
+- **iNaturalist, SUN and Places:** use the ImageNet OOD subsets curated by [MOS](https://github.com/deeplearning-wisc/large_scale_ood#out-of-distribution-dataset): [iNaturalist.tar.gz](https://pages.cs.wisc.edu/~huangrui/imagenet_ood_dataset/iNaturalist.tar.gz), [SUN.tar.gz](https://pages.cs.wisc.edu/~huangrui/imagenet_ood_dataset/SUN.tar.gz), and [Places.tar.gz](https://pages.cs.wisc.edu/~huangrui/imagenet_ood_dataset/Places.tar.gz).
+- **Textures (DTD):** download **dtd-r1.0.1.tar.gz** from the [official DTD page](https://www.robots.ox.ac.uk/~vgg/data/dtd/).
 
-For CLIP models, our reported results are based on checkpoints provided by [Open-CLIP](https://github.com/mlfoundations/open_clip). Similar results can be obtained with checkpoints in the codebase by [OpenAI](https://github.com/openai/CLIP). 
+Extract the four OOD archives into **datasets/ImageNet_OOD_dataset/**. For example, if the archives are in your Downloads directory:
 
+~~~bash
+mkdir -p datasets/ImageNet_OOD_dataset
+tar -xzf ~/Downloads/iNaturalist.tar.gz -C datasets/ImageNet_OOD_dataset
+tar -xzf ~/Downloads/SUN.tar.gz -C datasets/ImageNet_OOD_dataset
+tar -xzf ~/Downloads/Places.tar.gz -C datasets/ImageNet_OOD_dataset
+tar -xzf ~/Downloads/dtd-r1.0.1.tar.gz -C datasets/ImageNet_OOD_dataset
+~~~
 
+The extracted paths expected by the ImageNet-1K CLIP evaluation are:
 
-## Data Preparation
+~~~text
+datasets/
+├── ImageNet/val/<synset>/<image>
+└── ImageNet_OOD_dataset/
+    ├── iNaturalist/images/<image>
+    ├── SUN/images/<image>
+    ├── Places/images/<image>
+    └── dtd/images/<texture-class>/<image>
+~~~
 
-Please download or create the datasets in folder:
-```
-./datasets/
-```
+The small ImageNet class-name list used in zero-shot prompts is already included at **data/ImageNet/imagenet_class_clean.txt**.
 
-### Original In-distribution Datasets
+### Generate corrupted views
 
-We consider the following (in-distribution) datasets:
+The default CLIP view set follows Table 13 of the IJCV paper: the original image plus brightness, fog, saturate, motion blur, defocus blur and Gaussian blur, each at severity 1 and 2. Generate the required views from the downloaded original images:
 
-- `ImageNet-1k`, `ImageNet-10`, `ImageNet-20`, `ImageNet-100`
+~~~bash
+python utils/imagenet_c/gen_corruptions.py \
+  --dataset all --workers 8 \
+  --corruptions brightness,fog,saturate,motion_blur,defocus_blur,gaussian_blur \
+  --severities 1,2
+~~~
 
-The ImageNet-1k dataset (ILSVRC-2012) can be downloaded [here](https://image-net.org/challenges/LSVRC/2012/index.php#). 
+This writes ImageNet views under **datasets/DistortedImageNet/val_224/** and OOD views under **datasets/ImageNet_OOD_dataset/Distorted_CLIP/**. These generated files are also ignored by Git.
 
-For ImageNet-10, 20, and 100 in hard OOD detection, please follow the instructions in [MCM](https://github.com/deeplearning-wisc/MCM).
+Precomputation can require substantial disk space. For ImageNet-1K and the four OOD sets, **ON_THE_FLY_CORRUPT=1** applies corruptions while reading the original images without writing the corrupted directories. Use precomputed images for reproducible scores and identical corrupted views across backbones; the on-the-fly path resamples stochastic corruptions on each pass.
 
-### Original Out-of-Distribution Datasets
+## Evaluation
 
-We consider the following (out-of-distribution) datasets:
+Run from the repository root. CoVer+ uses CLIP ViT-B/16 and ViT-L/14 by default:
 
-- `iNaturalist`, `SUN`, `Places`, `Texture`
+~~~bash
+python eval_ood_detection.py --model CLIP --score 'CoVer+' \
+  --in_dataset ImageNet --root-dir datasets --gpu 0 --batch-size 128 \
+  --CLIP_ckpts ViT-B-16 ViT-L-14 --name ijcv_cover_plus
+~~~
 
-Following [MOS](https://arxiv.org/pdf/2105.01879), we use the large-scale OOD datasets [iNaturalist](https://arxiv.org/abs/1707.06642), [SUN](https://vision.princeton.edu/projects/2010/SUN/), [Places](https://arxiv.org/abs/1610.02055), and [Texture](https://arxiv.org/abs/1311.3618).
-To download these four test OOD datasets, one could follow the instructions in the [code repository](https://arxiv.org/pdf/2105.01879) of MOS.
+To use the on-the-fly data path, prefix the command with **ON_THE_FLY_CORRUPT=1**. To evaluate CoVer with one backbone:
 
-### Corrupted ID and OOD datasets
-We use the corruptions defined in [Hendrycks et al. 2019](https://arxiv.org/pdf/1903.12261) to expand the original single input dimension into a multi-dimensional one.
-The official ImageNet-C dataset can be downloaded [here](https://zenodo.org/records/2235448), which has all 1000 classes where each image is the standard size.
-We also provide a copy of the official implementation code for 18 types of corruptions at 5 severity levels in `utils/imagenet_c/make_imagenet_c.py`. 
+~~~bash
+python eval_ood_detection.py --model CLIP --score CoVer \
+  --in_dataset ImageNet --CLIP_ckpt ViT-B-16 --gpu 0
+~~~
 
-This implementation can also be used to implement the four corrupted OOD datasets, e.g. `iNaturalist-C`, `SUN-C`, `Places-C`, `Texture-C` and other ID datasets, e.g. `ImageNet-10-C`, `ImageNet-20-C`, `ImageNet-100-C`.
+**--CLIP_ckpts** accepts two or more distinct backbones for CoVer+. Both modes use the same view set defined by **imagenet_c** in **eval_ood_detection.py**. The script writes per-dataset scores, OOD metrics (FPR95, AUROC, AUPR), and distribution plots under **results/<ID>/<score>/.../**. Scores saved in the text files are negative confidence; the metrics invert their sign so larger confidence means more likely ID.
 
-To create a Corruption dataset, the following script can be used:
+The original ResNet and ImageNet subset paths remain available, but need their respective pretrained checkpoints, DICE feature statistics, and subset data layout. The command above is the IJCV CoVer+ CLIP entry point.
 
-```bash
-python utils/imagenet_c/make_imagenet_c.py
-```
+## License
 
-We use the [SVHN](http://ufldl.stanford.edu/housenumbers/) dataset as the validation set to determine the most effective corruption types for each method in all experiments. The `SVHN-C` can also be created by the above script.
-
-### Overall Structure
-After introducing the corrupted datasets for input expansion, the overall file structure is as follows:
-```
-CoVer
-|-- datasets
-    |-- ImageNet
-    |-- DistortedImageNet
-    |-- ImageNet_OOD_dataset
-        |-- Distorted
-          |-- iNaturalist
-          |-- dtd
-          |-- SUN
-          |-- Places 
-        |-- iNaturalist
-        |-- dtd
-        |-- SUN
-        |-- Places
-    ...
-```
-
-## OOD Detection Evaluation
-
-The main script for evaluating OOD detection performance is `eval_ood_detection.py`. Here are the list of arguments:
-
-- `--name`: A unique ID for the experiment, can be any string
-- `--score`: The OOD detection score, which accepts any of the following:
-  - `CoVer`: our CoVer mode
-  - `energy`: The [Energy score](https://proceedings.neurips.cc/paper/2020/hash/f5496252609c43eb8a3d147ab9b9c006-Abstract.html)
-- `--seed`: A random seed for the experiments
-- `--gpu`: The index of the GPU to use. For example `--gpu=0`
-- `--in_dataset`: The in-distribution dataset
-- `-b`, `--batch_size`: Mini-batch size
-- `--CLIP_ckpt`: Specifies the pre-trained CLIP encoder to use
-  - Accepts: `ViT-B/32`, `ViT-B/16`, `ViT-L/14`.
-
-The OOD detection results will be generated and stored in  `results/in_dataset/score/CLIP_ckpt/name/`. 
-
-Furthermore, the corruptions are selected in the main script `eval_ood_detection.py`, a variable named `imagenet_c`. We also recommend several corruption types through the validation set verification, please feel free to try in `eval_ood_detection.py`.
-
-We provide bash scripts to help reproduce the numerical results of our paper.  
-
-To evaluate the performance of CoVer on ImageNet-1k based on CLIP-B/16:
-```sh
-sh scripts/eval_mcm.sh CLIP eval_ood ImageNet CoVer
-```
-To evaluate the performance of CoVer on ImageNet-1k based on ResNet-50:
-```sh
-sh scripts/eval_mcm.sh ResNet50 eval_ood ImageNet CoVer
-```
+The CoVer code is released under the MIT license; see [LICENSE](LICENSE). Dataset and pretrained model licenses are separate.
 
 ## Citation
-If you find our paper and repo useful, please cite our paper:
-```
+
+~~~bibtex
+@article{zhang2026unveiling,
+  title={Unveiling Representation Expansion: A New Lens on Out-of-Distribution Detection},
+  author={Zhang, Boxuan and Zhu, Jianing and Wang, Zengmao and Liu, Tongliang and Du, Bo and Han, Bo},
+  journal={International Journal of Computer Vision},
+  volume={134},
+  year={2026},
+  doi={10.1007/s11263-026-03036-2}
+}
+
 @inproceedings{zhang2024what,
   title={What If the Input is Expanded in OOD Detection?},
   author={Zhang, Boxuan and Zhu, Jianing and Wang, Zengmao and Liu, Tongliang and Du, Bo and Han, Bo},
-  booktitle={The Thirty-Eighth Conference on Neural Information Processing Systems},
-  year={2024},
-} 
-```
+  booktitle={Advances in Neural Information Processing Systems},
+  year={2024}
+}
+~~~
